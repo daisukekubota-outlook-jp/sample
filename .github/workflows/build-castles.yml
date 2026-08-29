@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - castle-assets-build-20260830
+  pull_request:
+    branches:
+      - master
   workflow_dispatch:
 
 permissions:
