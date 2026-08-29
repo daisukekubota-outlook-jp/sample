@@ -1,0 +1,63 @@
+name: Build Japan 100 Castles Open-Data Pack
+
+on:
+  push:
+    branches:
+      - castle-assets-build-20260830
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install probe dependencies
+        run: python -m pip install --disable-pip-version-check requests lxml
+      - name: Probe and download Himeji PLATEAU CityGML
+        run: |
+          python - <<'PY'
+          import json, requests, pathlib, re
+          from urllib.parse import urljoin
+          out = pathlib.Path('artifact')
+          out.mkdir(exist_ok=True)
+          query_url = 'https://api.plateauview.mlit.go.jp/datacatalog/citygml/r:134.6939,34.8394'
+          r = requests.get(query_url, timeout=120)
+          r.raise_for_status()
+          (out/'himeji_citygml_query.json').write_bytes(r.content)
+          data = r.json()
+          gml_url = data['cities'][0]['files']['bldg'][0]['url']
+          print('GML', gml_url)
+          g = requests.get(gml_url, timeout=300)
+          print('GML status/bytes', g.status_code, len(g.content))
+          g.raise_for_status()
+          gml = out/'52342505_bldg_6697_op.gml'
+          gml.write_bytes(g.content)
+          text = g.text
+          uris = sorted(set(re.findall(r'<(?:\w+:)?imageURI>(.*?)</(?:\w+:)?imageURI>', text)))
+          info = {'gml_url':gml_url,'gml_bytes':len(g.content),'image_uri_count':len(uris),'image_uris':uris}
+          (out/'texture_uris.json').write_text(json.dumps(info,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(info,ensure_ascii=False,indent=2)[:30000])
+          for idx, uri in enumerate(uris[:3]):
+              u = urljoin(gml_url, uri)
+              rr = requests.get(u, timeout=120)
+              print(idx, rr.status_code, len(rr.content), u)
+              if rr.ok:
+                  p = out/'sample_textures'/pathlib.Path(uri).name
+                  p.parent.mkdir(parents=True,exist_ok=True)
+                  p.write_bytes(rr.content)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plateau-probe
+          path: artifact/
+          if-no-files-found: error
