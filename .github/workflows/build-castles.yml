@@ -1,0 +1,38 @@
+name: Build Japan 100 Castles Open-Data Pack
+
+on:
+  push:
+    branches:
+      - castle-assets-build-20260830
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Probe PLATEAU API
+        run: |
+          python - <<'PY'
+          import json, requests, pathlib
+          url = 'https://api.plateauview.mlit.go.jp/datacatalog/citygml/r:134.6939,34.8394'
+          r = requests.get(url, timeout=120)
+          print(r.status_code, r.url, len(r.content))
+          r.raise_for_status()
+          pathlib.Path('artifact').mkdir(exist_ok=True)
+          pathlib.Path('artifact/himeji_citygml_query.json').write_bytes(r.content)
+          data = r.json()
+          print(json.dumps(data, ensure_ascii=False, indent=2)[:10000])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plateau-probe
+          path: artifact/
+          if-no-files-found: error
